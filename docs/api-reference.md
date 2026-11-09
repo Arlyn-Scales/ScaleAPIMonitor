@@ -1,10 +1,10 @@
-# API reference
+# Arlyn UpScale Web API Push and REST API reference
 
-This page covers three things: what the scale pushes to the monitor, the HTTP endpoints the monitor serves, and the scale's own HTTP API calls the monitor makes.
+This page documents the network API of the [Arlyn UpScale Touchscreen Indicator](https://www.arlynscales.com/scales/arlyn-upscale-touchscreen-indicator-2/) as used by ScaleAPIMonitor. It covers three things: the JSON the scale pushes with Web API Push, the HTTP endpoints ScaleAPIMonitor serves, and the UpScale REST HTTP API calls it makes. For ready-to-use code, see the [integration guide](integration-guide.md).
 
-## 1. Push from the scale (incoming)
+## 1. Web API Push from the scale (incoming)
 
-The scale's Web API Push feature sends one request per reading:
+The UpScale's Web API Push feature sends one request per reading:
 
 ```http
 POST /weight HTTP/1.1
@@ -102,9 +102,9 @@ Response:
 
 On failure, `ok` is `false` and `error` explains why, for example `"cannot reach scale: timed out"` or `"scale replied HTTP 404"`. Invalid input (a bad IP or port) returns HTTP 400. Requests to the scale time out after 4 seconds and bypass any system proxy.
 
-## 3. Scale HTTP API (outgoing)
+## 3. Arlyn UpScale REST HTTP API (outgoing)
 
-These calls follow the *Arlyn UpScale REST HTTP API Reference*, version 1.0. The base URL is `http://<scale-ip>:<port>/api/1.0/`. The path is case-insensitive, but parameter names are case-sensitive (`Platform`, not `platform`).
+The Arlyn UpScale has a built-in REST HTTP API for reading the scale and pressing its buttons over the network. These calls follow the *Arlyn UpScale REST HTTP API Reference*, version 1.0. The base URL is `http://<scale-ip>:<port>/api/1.0/`. The path is case-insensitive, but parameter names are case-sensitive (`Platform`, not `platform`).
 
 | Purpose | Method | Path | Response |
 |---|---|---|---|

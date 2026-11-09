@@ -1,0 +1,14 @@
+# ScaleAPIMonitor for the Arlyn UpScale
+
+> ScaleAPIMonitor is a free, open-source tool from Arlyn Scales for testing and integrating the network API of the Arlyn UpScale Touchscreen Indicator, a 7-inch touchscreen indicator for industrial scales. The UpScale has a built-in REST HTTP API (version 1.0, base URL http://<scale-ip>:<port>/api/1.0/) for reading weight, unit, tare and gross/net as JSON and for pressing ZERO, TARE, UNIT and GROSS/NET, plus Web API Push, which POSTs each reading as JSON to a URL you choose.
+
+- [Home and FAQ](https://arlyn-scales.github.io/ScaleAPIMonitor/): what ScaleAPIMonitor does, with answers to common questions about the Arlyn UpScale API
+- [Integration guide](https://arlyn-scales.github.io/ScaleAPIMonitor/integration-guide.html): code examples in Python, C#, JavaScript and PowerShell for reading and controlling an Arlyn scale and receiving Web API Push data
+- [API reference](https://arlyn-scales.github.io/ScaleAPIMonitor/api-reference.html): the Web API Push JSON format and every UpScale REST HTTP API endpoint
+- [User guide](https://arlyn-scales.github.io/ScaleAPIMonitor/user-guide.html): installing and using the ScaleAPIMonitor dashboard
+- [Source code](https://github.com/Arlyn-Scales/ScaleAPIMonitor): Apache 2.0 licensed Python 3 script with no dependencies
+
+## Arlyn Scales
+
+- [Arlyn Scales](https://www.arlynscales.com/): US manufacturer of industrial, intrinsically safe and Ultra Precision scales
+- [Arlyn UpScale Touchscreen Indicator](https://www.arlynscales.com/scales/arlyn-upscale-touchscreen-indicator-2/): product page with specifications and connectivity options

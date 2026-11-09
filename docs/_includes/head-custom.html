@@ -1,0 +1,58 @@
+{% if page.url == "/" %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "ScaleAPIMonitor",
+      "description": "Free, open-source tool for testing and integrating the Arlyn UpScale touchscreen scale indicator's Web API Push and REST HTTP API.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Windows, macOS, Linux",
+      "url": "https://arlyn-scales.github.io/ScaleAPIMonitor/",
+      "downloadUrl": "https://github.com/Arlyn-Scales/ScaleAPIMonitor/releases/latest",
+      "codeRepository": "https://github.com/Arlyn-Scales/ScaleAPIMonitor",
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+      "publisher": {"@type": "Organization", "name": "Arlyn Scales", "url": "https://www.arlynscales.com/"},
+      "about": {
+        "@type": "Product",
+        "name": "Arlyn UpScale Touchscreen Indicator",
+        "brand": {"@type": "Brand", "name": "Arlyn Scales"},
+        "url": "https://www.arlynscales.com/scales/arlyn-upscale-touchscreen-indicator-2/"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does the Arlyn UpScale indicator have a REST API?",
+          "acceptedAnswer": {"@type": "Answer", "text": "Yes. The Arlyn UpScale Touchscreen Indicator has a built-in REST HTTP API (version 1.0) at http://<scale-ip>:<port>/api/1.0/. GET requests read the weight, unit, tare and gross/net state as JSON, and POST requests press the ZERO, TARE, UNIT and GROSS/NET buttons."}
+        },
+        {
+          "@type": "Question",
+          "name": "How do I get weight data from an Arlyn scale into my software?",
+          "acceptedAnswer": {"@type": "Answer", "text": "Over the network, either poll the REST API (GET /api/1.0/weight) or turn on Web API Push so the scale sends each reading to your server as JSON. The UpScale also offers RS-232, USB, Keyboard Wedge, Modbus TCP, Modbus RTU/ASCII, EtherNet/IP and PROFINET outputs, live data logging to Google Sheets, and AxChange cloud monitoring."}
+        },
+        {
+          "@type": "Question",
+          "name": "What data does Web API Push send?",
+          "acceptedAnswer": {"@type": "Answer", "text": "One HTTP POST per reading, with a JSON body containing Weight, Unit, Tare, Gross (true for gross, false for net), Stable and Platform."}
+        },
+        {
+          "@type": "Question",
+          "name": "Can I zero or tare an Arlyn scale remotely?",
+          "acceptedAnswer": {"@type": "Answer", "text": "Yes. Send POST /api/1.0/button/zero/click or POST /api/1.0/button/tare/click to the scale. ScaleAPIMonitor's Scale control panel does this with one click."}
+        },
+        {
+          "@type": "Question",
+          "name": "Is ScaleAPIMonitor free?",
+          "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is open source under the Apache 2.0 license, so you can use it, change it and build it into your own products."}
+        }
+      ]
+    }
+  ]
+}
+</script>
+{% endif %}

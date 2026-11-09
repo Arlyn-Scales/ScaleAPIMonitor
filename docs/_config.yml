@@ -1,0 +1,17 @@
+title: ScaleAPIMonitor for the Arlyn UpScale
+description: Free, open-source tool from Arlyn Scales for testing and integrating the Arlyn UpScale touchscreen scale indicator's Web API Push and REST HTTP API.
+url: https://arlyn-scales.github.io
+baseurl: /ScaleAPIMonitor
+lang: en-US
+theme: jekyll-theme-cayman
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+author: Arlyn Scales
+social:
+  name: Arlyn Scales
+  links:
+    - https://www.arlynscales.com/
+    - https://github.com/Arlyn-Scales
+include:
+  - llms.txt

@@ -1,4 +1,6 @@
-# ScaleAPIMonitor user guide
+# ScaleAPIMonitor user guide: test the Arlyn UpScale Web API
+
+This guide shows how to install ScaleAPIMonitor, connect it to an [Arlyn UpScale Touchscreen Indicator](https://www.arlynscales.com/scales/arlyn-upscale-touchscreen-indicator-2/), watch live Web API Push data, and control the scale through its REST HTTP API. To connect the scale to your own software instead, see the [integration guide](integration-guide.md).
 
 1. [Install](#install)
 2. [Start the monitor](#start-the-monitor)
@@ -27,8 +29,8 @@ You only need **Python 3.8 or newer**. Nothing else gets installed.
 
 Then get the code:
 
-- **ZIP:** on GitHub, click **Code > Download ZIP** and extract it, for example to `C:\Users\<you>\Projects\ScaleAPIMonitor`.
-- **Git:** `git clone https://github.com/<your-account>/ScaleAPIMonitor.git`
+- **ZIP:** download the [latest release](https://github.com/Arlyn-Scales/ScaleAPIMonitor/releases/latest) and extract it, for example to `C:\Users\<you>\Projects\ScaleAPIMonitor`.
+- **Git:** `git clone https://github.com/Arlyn-Scales/ScaleAPIMonitor.git`
 
 ## Start the monitor
 
@@ -60,7 +62,7 @@ To use another port: `python scale_push_monitor.py --port 9000` (or `run.bat 900
 
 1. On the dashboard, find **"Program this URL into the scale"** and click **Copy**.
    If several URLs are listed, use the one on the same network as the scale. For example, a scale at `192.168.1.141` needs a `192.168.1.x` address.
-2. In the scale's **Web API / Push** settings, enter that URL. The method is **POST** and the body is JSON.
+2. In the UpScale's **Web API / Push** settings, enter that URL. The method is **POST** and the body is JSON.
 3. Put something on the scale. The big number should start updating, and the status pill turns green ("Receiving from 192.168.1.141").
 
 Each push also prints a line in the console:
@@ -73,7 +75,7 @@ Add `-v` to also print the headers and full body of every push.
 
 ## Reading the dashboard
 
-![Dashboard](images/dashboard.png)
+![ScaleAPIMonitor dashboard showing live Web API Push weight data from an Arlyn UpScale indicator](images/dashboard.png)
 
 **Main reading (top left)**
 
@@ -101,7 +103,7 @@ Add `-v` to also print the headers and full body of every push.
 
 **Recent pushes (bottom)**: the last 50 pushes, newest first, with the time, sender, parsed weight and raw body. Malformed bodies are shown in red with the parse error. Use **Pause** to freeze the list while you read it, and **Clear** to empty it (this only clears the list in your browser).
 
-![Stale state](images/stale.png)
+![ScaleAPIMonitor showing the STALE warning when the Arlyn scale stops pushing data](images/stale.png)
 
 ## Controlling the scale
 

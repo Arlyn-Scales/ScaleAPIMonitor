@@ -12,7 +12,7 @@ There are two ways to get weight data from the scale:
 
 Many integrations use both: Push for live readings, and the REST API to tare or zero the scale between jobs.
 
-Before you write code, use [ScaleAPIMonitor](https://github.com/Arlyn-Scales/ScaleAPIMonitor) to check that the scale is reachable and sending data. If the dashboard shows live readings and **Test connection** succeeds, your code will be able to reach the scale too. The complete endpoint list is in the [API reference](api-reference.md).
+Before you write code, use [ScaleAPIMonitor](https://github.com/Arlyn-Scales/ScaleAPIMonitor) to check that the scale is reachable and sending data. If **Start streaming** or **Test once** shows live readings, your code will be able to reach the scale too. The complete endpoint list is in the [API reference](api-reference.md).
 
 In the examples, replace `192.168.1.141` with your scale's IP address and `8080` with its API port, both from the scale's network settings.
 

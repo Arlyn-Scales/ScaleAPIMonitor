@@ -12,8 +12,9 @@ Zero third-party dependencies: Python 3.8+ standard library only.
 
 Program the scale to push to:  http://<this-PC-LAN-IP>:<port>/weight
 Open the dashboard at:         http://localhost:<port>/
-The dashboard can also send ZERO / TARE / UNIT / NET-GROSS commands to the
-scale's HTTP API (http://<scale-ip>:<scale-port>/api/1.0/...).
+The dashboard can also read the scale continuously (Start streaming) and send
+ZERO / TARE / UNIT / NET-GROSS commands to the scale's HTTP API
+(http://<scale-ip>:<scale-port>/api/1.0/...).
 """
 
 import argparse
@@ -32,7 +33,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.1"
+VERSION = "1.2"
 LOG_SIZE = 50
 STALE_SECONDS = 3.0
 
@@ -171,6 +172,12 @@ class State:
         self.log = collections.deque(maxlen=LOG_SIZE)
         self.times = collections.deque()
         self.clients = set()
+        self.stream_lock = threading.Lock()
+        self.stream_wake = threading.Event()
+        self.stream = {
+            "enabled": False, "ip": "", "port": 0, "platform": None, "rate": 4.0,
+            "reads": 0, "errors": 0, "last_error": "", "last_ok": None,
+        }
 
     def pps(self, now=None):
         now = now or time.time()
@@ -191,6 +198,32 @@ class State:
                 self.latest = entry
         self.broadcast("push", entry)
 
+    def stream_status(self):
+        with self.stream_lock:
+            s = dict(self.stream)
+        s["target"] = ("http://%s:%d/api/1.0/weight" % (s["ip"], s["port"])) if s["ip"] else ""
+        return s
+
+    def configure_stream(self, enabled, ip, port, platform, rate):
+        rate = min(10.0, max(0.5, float(rate or 4)))
+        with self.stream_lock:
+            changed = (enabled, ip, port, platform, rate) != (
+                self.stream["enabled"], self.stream["ip"], self.stream["port"],
+                self.stream["platform"], self.stream["rate"])
+            self.stream["enabled"] = bool(enabled)
+            self.stream["ip"] = ip
+            self.stream["port"] = port
+            self.stream["platform"] = platform
+            self.stream["rate"] = rate
+            if not enabled:
+                self.stream["last_error"] = ""
+        if changed:
+            print("[stream] %s" % (
+                "reading %s:%d every %.2fs" % (ip, port, 1.0 / rate) if enabled
+                else "stopped"), flush=True)
+        self.stream_wake.set()
+        return self.stream_status()
+
     def snapshot(self):
         with self.lock:
             latest = self.latest
@@ -199,6 +232,7 @@ class State:
         return {
             "server": server_info(self.port),
             "scale_default": {"ip": self.scale_ip, "port": self.scale_port},
+            "stream": self.stream_status(),
             "latest": latest,
             "log": log,
             "stats": self.stats(count, errors),
@@ -326,6 +360,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path.lower() == "/api/scale":
             return self._scale_command()
+        if path.lower() == "/api/stream":
+            return self._stream_config()
         try:
             raw = self._read_body()
         except Exception as e:  # malformed framing: still answer 200
@@ -378,6 +414,28 @@ class Handler(BaseHTTPRequestHandler):
         result["action"] = action
         print_command(result, self.client_address[0])
         self._send(200, json.dumps(result))
+
+    def _stream_config(self):
+        try:
+            req = json.loads(self._read_body().decode("utf-8") or "{}")
+            enabled = bool(req.get("enabled"))
+            ip = str(req.get("ip", "")).strip()
+            port = int(req.get("port") or 0)
+            platform = req.get("platform")
+            platform = None if platform in (None, "", "0", 0) else int(platform)
+            rate = float(req.get("rate") or 4)
+            if enabled:
+                if not HOST_RE.match(ip):
+                    raise ValueError("enter a valid scale IP address or hostname")
+                if not 1 <= port <= 65535:
+                    raise ValueError("enter a valid scale port (1-65535)")
+                if platform is not None and not 0 <= platform <= 9:
+                    raise ValueError("platform must be 0-9")
+        except (ValueError, TypeError) as e:
+            return self._send(400, json.dumps({"ok": False, "error": str(e)}))
+        status = self.state.configure_stream(enabled, ip, port, platform, rate)
+        self.state.broadcast("stream", status)
+        self._send(200, json.dumps(status))
 
     # -- dashboard ---------------------------------------------------------
     def do_GET(self):
@@ -587,6 +645,69 @@ def run_scale_action(ip, port, action, platform=None, target=None):
     return {"ok": False, "error": "unknown action %r" % action, "steps": steps}
 
 
+def poll_entry(ip, resp, decimals):
+    now = time.time()
+    data = resp.get("json") if isinstance(resp.get("json"), dict) else None
+    raw = resp.get("body") or resp.get("error") or ""
+    return {
+        "t": now,
+        "time": datetime.datetime.fromtimestamp(now).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        "client": ip,
+        "path": "GET /weight",
+        "source": "poll",
+        "content_type": "application/json",
+        "user_agent": "polled by ScaleAPIMonitor",
+        "bytes": len(raw),
+        "raw": raw[:4000],
+        "ok": data is not None and resp.get("ok"),
+        "error": None if data is not None and resp.get("ok") else (resp.get("error") or "no JSON weight"),
+        "data": normalize(data, decimals) if data is not None and resp.get("ok") else None,
+    }
+
+
+def stream_loop(state):
+    """Keep reading GET /api/1.0/weight while streaming is on."""
+    last_error_logged = 0.0
+    while True:
+        status = state.stream_status()
+        if not status["enabled"] or not status["ip"]:
+            state.stream_wake.wait(1.0)
+            state.stream_wake.clear()
+            continue
+        interval = 1.0 / status["rate"]
+        started = time.time()
+        resp = scale_request(status["ip"], status["port"], "GET", "weight",
+                             status["platform"], timeout=min(2.5, max(0.4, interval * 3)))
+        current = state.stream_status()
+        if (current["ip"], current["port"], current["platform"]) != (
+                status["ip"], status["port"], status["platform"]):
+            state.stream_wake.clear()
+            continue  # settings changed mid-request; don't record the old target
+        if not current["enabled"]:
+            continue
+        good = resp.get("ok") and isinstance(resp.get("json"), dict)
+        with state.stream_lock:
+            if good:
+                state.stream["reads"] += 1
+                state.stream["last_error"] = ""
+                state.stream["last_ok"] = time.time()
+            else:
+                state.stream["errors"] += 1
+                state.stream["last_error"] = resp.get("error") or "scale did not return a weight"
+        if good:
+            entry = poll_entry(status["ip"], resp, state.decimals)
+            state.record(entry)
+            print_push(entry, False)
+        elif time.time() - last_error_logged > 2.0:
+            last_error_logged = time.time()
+            entry = poll_entry(status["ip"], resp, state.decimals)
+            state.record(entry)
+            print_push(entry, False)
+        state.broadcast("stream", state.stream_status())
+        state.stream_wake.wait(max(0.02, interval - (time.time() - started)))
+        state.stream_wake.clear()
+
+
 def print_command(res, from_ip):
     steps = res.get("steps") or []
     detail = "; ".join("%s %s -> %s" % (s["method"], s["url"], s.get("status") or s.get("error"))
@@ -687,6 +808,9 @@ h1{font-size:19px;margin:0;font-weight:650;letter-spacing:.2px}
 .url code{flex:1;font:13.5px ui-monospace,Consolas,Menlo,monospace;color:#cfe0ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:6px 12px;font-weight:600;font-size:12.5px;cursor:pointer}
 button:hover{filter:brightness(1.1)} button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+button.stream.on{background:#15803d}
+label.rate{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+label.rate select{width:68px}
 .rows{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
 .rows .k{color:var(--muted)} .rows .v{text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hint{color:var(--muted);font-size:12px;margin-top:8px}
@@ -807,11 +931,14 @@ input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
               <option>6</option><option>7</option><option>8</option><option>9</option></select></label>
         </div>
         <div class="conn-row">
-          <button id="scTest">Test connection</button>
+          <button id="scStream" class="stream">Start streaming</button>
+          <label class="rate"><select id="scRate"><option value="1">1</option><option value="2">2</option><option value="4" selected>4</option><option value="5">5</option><option value="10">10</option></select>/ sec</label>
+          <button id="scTest" class="ghost">Test once</button>
           <button class="linkbtn" id="scUseSender" title="Fill in the IP that the pushes come from">Use sender IP</button>
-          <span class="target" id="scTarget"></span>
         </div>
-        <div class="result" id="scResult"><span class="ic">&bull;</span><span>Enter the scale's IP and port, then press a button.</span></div>
+        <div class="target" id="scTarget" style="margin-top:8px"></div>
+        <div class="hint" id="scStreamMsg">Enter the scale's IP and port, then press Start streaming. The monitor reads the weight repeatedly; the scale does not have to push.</div>
+        <div class="result" id="scResult"><span class="ic">&bull;</span><span>Commands (ZERO, TARE, UNIT, NET/GROSS) use the same address.</span></div>
       </div>
       <div>
         <div class="btns">
@@ -926,9 +1053,14 @@ function tick(){
   $("bStale").classList.toggle("b-hidden", !(stale && latest));
   const dot=$("connDot"), txt=$("connText");
   if(!connected){dot.className="dot off";txt.textContent="Dashboard disconnected - retrying"}
-  else if(age == null){dot.className="dot warn";txt.textContent="Listening - waiting for scale"}
-  else if(stale){dot.className="dot warn";txt.textContent="No data for "+Math.round(age)+" s"}
-  else {dot.className="dot on";txt.textContent="Receiving from "+(latest?latest.client:"scale")}
+  else if(streamState.enabled && streamState.last_error && stale){
+    dot.className="dot warn"; txt.textContent="Cannot reach "+streamState.ip}
+  else if(age == null){dot.className="dot warn";
+    txt.textContent = streamState.enabled ? "Streaming from "+streamState.ip+"…" : "Listening - waiting for scale"}
+  else if(stale){dot.className="dot warn";
+    txt.textContent = streamState.enabled ? "No reply from "+streamState.ip : "No data for "+Math.round(age)+" s"}
+  else {dot.className="dot on";
+    txt.textContent = (streamState.enabled ? "Streaming from " : "Receiving from ")+(latest?latest.client:"scale")}
 }
 setInterval(tick, 200);
 
@@ -939,7 +1071,12 @@ function connect(){
   es.addEventListener("snapshot", m => {
     const s = JSON.parse(m.data);
     renderServer(s.server); renderStats(s.stats);
-    if(!scaleCfgLoaded){ scaleCfgLoaded = true; loadScaleCfg(s.scale_default); }
+    if(!scaleCfgLoaded){
+      scaleCfgLoaded = true;
+      loadScaleCfg(s.scale_default);
+      if(s.stream && s.stream.enabled) applyStream(s.stream);
+      else if(wantStream) setStream(true);
+    }
     logRows = s.log.slice(-MAX_LOG); renderLog();
     if(s.latest) renderLatest(s.latest, false);
   });
@@ -949,12 +1086,15 @@ function connect(){
     addLog(e);
   });
   es.addEventListener("stats", m => renderStats(JSON.parse(m.data)));
+  es.addEventListener("stream", m => applyStream(JSON.parse(m.data)));
 }
 $("pauseBtn").onclick = () => { paused=!paused; $("pauseBtn").textContent = paused?"Resume":"Pause"; renderLog(); };
 $("clearBtn").onclick = () => { logRows=[]; renderLog(); $("logInfo").textContent=""; };
 
 // ---- Scale control ------------------------------------------------------
 const LS = "spm.scale";
+let streamState = {enabled:false, last_error:"", ip:""};
+let wantStream = false;
 function loadScaleCfg(def){
   let c = {}; try { c = JSON.parse(localStorage.getItem(LS) || "{}"); } catch(e) {}
   if(!c.ip && def && def.ip) c.ip = def.ip;
@@ -962,15 +1102,56 @@ function loadScaleCfg(def){
   if(c.ip) $("scIp").value = c.ip;
   $("scPort").value = c.port || 8080;
   $("scPlat").value = c.platform || "";
+  if(c.rate) $("scRate").value = String(c.rate);
+  wantStream = !!c.streaming;
   showTarget();
 }
-function scaleCfg(){ return { ip: $("scIp").value.trim(), port: parseInt($("scPort").value, 10) || 0, platform: $("scPlat").value }; }
-function saveScaleCfg(){ localStorage.setItem(LS, JSON.stringify(scaleCfg())); showTarget(); }
+function scaleCfg(){ return { ip: $("scIp").value.trim(), port: parseInt($("scPort").value, 10) || 0,
+  platform: $("scPlat").value, rate: parseFloat($("scRate").value) || 4 }; }
+function saveScaleCfg(){
+  const c = scaleCfg();
+  c.streaming = !!(streamState && streamState.enabled);
+  localStorage.setItem(LS, JSON.stringify(c)); showTarget();
+  if(streamState.enabled) scheduleStream();
+}
 function showTarget(){
   const c = scaleCfg();
   $("scTarget").textContent = c.ip ? `http://${c.ip}:${c.port || "?"}/api/1.0/` : "";
 }
-["scIp","scPort","scPlat"].forEach(id => $(id).addEventListener("input", saveScaleCfg));
+["scIp","scPort","scPlat","scRate"].forEach(id => {
+  $(id).addEventListener("input", saveScaleCfg);
+  $(id).addEventListener("change", saveScaleCfg);
+});
+function applyStream(st){
+  streamState = st || {enabled:false, last_error:"", ip:""};
+  const on = !!streamState.enabled;
+  $("scStream").textContent = on ? "Stop streaming" : "Start streaming";
+  $("scStream").classList.toggle("on", on);
+  const msg = $("scStreamMsg");
+  if(!on) msg.textContent = "Enter the scale's IP and port, then press Start streaming. The monitor reads the weight repeatedly; the scale does not have to push.";
+  else if(streamState.last_error) msg.textContent = "Streaming " + streamState.ip + " — " + streamState.last_error;
+  else msg.textContent = "Streaming " + (streamState.rate || "") + "/s from " + (streamState.target || streamState.ip);
+  tick();
+}
+let streamTimer = null;
+function scheduleStream(){
+  clearTimeout(streamTimer);
+  streamTimer = setTimeout(() => { if(streamState.enabled) setStream(!!$("scIp").value.trim()); }, 400);
+}
+async function setStream(on){
+  const c = scaleCfg();
+  if(on && !c.ip){ $("scStreamMsg").textContent = "Enter the scale's IP address first."; $("scIp").focus(); return; }
+  wantStream = on;
+  try {
+    const resp = await fetch("/api/stream", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({enabled: on, ip: c.ip, port: c.port, platform: c.platform, rate: c.rate})});
+    const st = await resp.json();
+    if(!resp.ok){ $("scStreamMsg").textContent = st.error || "Could not start streaming"; return; }
+    applyStream(st);
+    const saved = scaleCfg(); saved.streaming = on; localStorage.setItem(LS, JSON.stringify(saved));
+  } catch(e) { $("scStreamMsg").textContent = "Dashboard lost contact with the monitor"; }
+}
+$("scStream").onclick = () => setStream(!streamState.enabled);
 $("scUseSender").onclick = () => {
   if(latest && latest.client){ $("scIp").value = latest.client; saveScaleCfg(); toast("Using " + latest.client); }
   else toast("No push received yet");
@@ -979,7 +1160,7 @@ $("scUseSender").onclick = () => {
 const LABELS = {zero:"ZERO", tare:"TARE", clear_tare:"CLEAR TARE", unit:"UNIT", gross:"NET/GROSS",
   get_weight:"TEST", set_unit:"SET UNIT", set_mode:"SET MODE"};
 let busy = false;
-function setBusy(b){ busy = b; document.querySelectorAll(".ctrl button:not(.linkbtn)").forEach(x => x.disabled = b); }
+function setBusy(b){ busy = b; document.querySelectorAll(".ctrl button:not(.linkbtn):not(#scStream)").forEach(x => x.disabled = b); }
 function showResult(ok, text, detail){
   const r = $("scResult"); r.className = "result " + (ok ? "ok" : "bad");
   r.innerHTML = `<span class="ic">${ok ? "&#10003;" : "&#10007;"}</span><span>${esc(text)}</span><code title="${esc(detail||"")}">${esc(detail||"")}</code>`;
@@ -1066,6 +1247,7 @@ def main(argv=None):
                 print("[demo] cannot start mock scale API on port %d: %s" % (args.demo_api_port, e))
 
     state = State(port, args.decimals, args.scale_ip, args.scale_port)
+    threading.Thread(target=stream_loop, args=(state,), daemon=True).start()
     Handler.state = state
     Handler.verbose = args.verbose
     try:

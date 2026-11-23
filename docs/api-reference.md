@@ -39,6 +39,7 @@ The monitor always replies `200 OK` with `{"ok": true}`, even when it can't pars
 | `GET` | `/api/state` | A snapshot: server info, default scale address, latest push, recent log, stats |
 | `GET` | `/events` | A Server-Sent Events stream used by the dashboard |
 | `POST` | `/api/scale` | Sends a command to the scale (see below) |
+| `POST` | `/api/stream` | Starts or stops continuous `GET /api/1.0/weight` polling (see below) |
 
 ### `GET /events`
 
@@ -101,6 +102,28 @@ Response:
 ```
 
 On failure, `ok` is `false` and `error` explains why, for example `"cannot reach scale: timed out"` or `"scale replied HTTP 404"`. Invalid input (a bad IP or port) returns HTTP 400. Requests to the scale time out after 4 seconds and bypass any system proxy.
+
+
+
+### `POST /api/stream`
+
+Starts or stops a single poller that calls `GET /api/1.0/weight` and feeds each reading into the same live display as a push. One poller runs for the whole monitor; a new request replaces it.
+
+```json
+{"enabled": true, "ip": "192.168.1.141", "port": 8080, "platform": "", "rate": 4}
+```
+
+`rate` is readings per second, clamped to 0.5–10. An empty `platform` means the platform on the scale's screen.
+
+The response (also sent on the `/events` stream as a `stream` event, and included in `/api/state`) is:
+
+```json
+{"enabled": true, "ip": "192.168.1.141", "port": 8080, "platform": null, "rate": 4.0,
+ "reads": 12, "errors": 0, "last_error": "", "last_ok": 1763660000.0,
+ "target": "http://192.168.1.141:8080/api/1.0/weight"}
+```
+
+Each successful read is recorded like a push, with `"source": "poll"` and `"path": "GET /weight"`. Failures are recorded at most once every 2 seconds so a dead scale doesn't fill the log.
 
 ## 3. Arlyn UpScale REST HTTP API (outgoing)
 

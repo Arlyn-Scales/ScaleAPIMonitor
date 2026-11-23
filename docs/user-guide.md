@@ -6,11 +6,12 @@ This guide shows how to install ScaleAPIMonitor, connect it to an [Arlyn UpScale
 2. [Start the monitor](#start-the-monitor)
 3. [Point the scale at the monitor](#point-the-scale-at-the-monitor)
 4. [Reading the dashboard](#reading-the-dashboard)
-5. [Controlling the scale](#controlling-the-scale)
-6. [Testing without a scale](#testing-without-a-scale)
-7. [Command-line options](#command-line-options)
-8. [Windows Firewall](#windows-firewall)
-9. [Troubleshooting](#troubleshooting)
+5. [Streaming from the scale's IP](#streaming-from-the-scales-ip)
+6. [Controlling the scale](#controlling-the-scale)
+7. [Testing without a scale](#testing-without-a-scale)
+8. [Command-line options](#command-line-options)
+9. [Windows Firewall](#windows-firewall)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -96,8 +97,9 @@ Add `-v` to also print the headers and full body of every push.
 
 | Pill | Meaning |
 |---|---|
+| Green "Streaming from ..." | The monitor is reading the scale's HTTP API |
 | Green "Receiving from ..." | Pushes are arriving |
-| Amber "Listening - waiting for scale" | The server is running, but no push has arrived yet |
+| Amber "Listening - waiting for scale" | The server is running, but no push or stream has arrived yet |
 | Amber "No data for N s" | Pushes stopped |
 | Red "Dashboard disconnected" | The browser lost contact with the monitor (it reconnects automatically) |
 
@@ -105,9 +107,26 @@ Add `-v` to also print the headers and full body of every push.
 
 ![ScaleAPIMonitor showing the STALE warning when the Arlyn scale stops pushing data](images/stale.png)
 
+
+## Streaming from the scale's IP
+
+Push is one way to get readings. The other is to have this program **ask the scale** for the weight, over and over.
+
+1. In **Scale control**, enter the scale's **IP address** and **port** (the HTTP API port from the scale's network settings; the API examples use `8080`).
+2. Press **Start streaming**.
+3. Pick how many times a second to read (1, 2, 4, 5 or 10). 4 per second is a good default.
+4. The status pill turns green and says "Streaming from 192.168.1.141". The big weight, unit, tare, NET/GROSS and the log all update from those reads. Each log row is marked `GET /weight`.
+5. Press **Stop streaming** to pause. The address and the fact that streaming was on are remembered, so the next time you open the dashboard it starts again.
+
+You do not have to program a push URL for this. Streaming and push can both be on; whichever reading arrives last is the one on screen.
+
+If the scale can't be reached, the pill says "Cannot reach ..." and the note under the button shows the error. Check the IP, the API port, and that the scale's HTTP API is turned on.
+
+**Test once** reads the weight a single time and shows it in the result box, without starting the stream.
+
 ## Controlling the scale
 
-The **Scale control** panel sends commands to the scale's built-in HTTP API (Arlyn UpScale REST API 1.0), at `http://<scale-ip>:<port>/api/1.0/`.
+The **Scale control** panel sends commands to the scale's built-in HTTP API (Arlyn UpScale REST API 1.0), at `http://<scale-ip>:<port>/api/1.0/`. Streaming and the buttons use the same IP and port.
 
 1. **Scale IP address**: type it in, or click **Use sender IP** to copy the address the pushes come from.
 2. **Port**: the scale's HTTP API port, from the scale's network settings. The API documentation's examples use `8080`.
@@ -227,7 +246,7 @@ Sending commands to the scale is an *outgoing* connection, so it doesn't need a 
 
 | Symptom | What to check |
 |---|---|
-| "Listening - waiting for scale" never changes | Check that the scale's push URL uses this PC's LAN IP (not `localhost`), the right port, and `/weight`. Check the [firewall](#windows-firewall). Check that the scale and PC are on the same subnet (`ping 192.168.1.141`). Try `simulate.py --url ...` from another PC to separate network problems from scale settings |
+| "Listening - waiting for scale" never changes | Either press **Start streaming** with the scale's IP and API port, or set the scale's push URL to this PC's LAN IP (not `localhost`), the right port, and `/weight`. Check the [firewall](#windows-firewall) for pushes. Check that the scale and PC are on the same subnet (`ping 192.168.1.141`) |
 | Several IPs listed | Use the one on the scale's network (usually `192.168.1.x`) |
 | `ERROR: cannot listen on 0.0.0.0:8080` | Another program is using the port. Use `--port 8081` (and update the scale's push URL) |
 | Rows shown in red / "Bad bodies" counting up | The scale sent something that isn't JSON. The raw text is shown in the log and printed to the console. The scale still got HTTP 200 |

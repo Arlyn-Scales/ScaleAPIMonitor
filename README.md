@@ -24,7 +24,7 @@ It is a single Python 3 script that uses only the standard library: no `pip inst
    On Windows, you can double-click `run.bat` instead.
 4. Open <http://localhost:8080/>.
 5. Copy the **push URL** shown on the dashboard (for example `http://192.168.1.50:8080/weight`) into the UpScale's Web API Push settings.
-6. To control the scale, enter its IP address and API port in the **Scale control** panel, then press **Test connection**.
+6. To watch the weight without setting up Push, enter the scale's IP and API port in **Scale control** and press **Start streaming**. The big number updates continuously. Use the same address for ZERO, TARE, UNIT and NET/GROSS (or press **Test once** to read a single value).
 
 No scale handy? Run `python scale_push_monitor.py --demo`. It generates fake pushes and runs a fake UpScale API that responds to the buttons.
 
@@ -51,6 +51,7 @@ The [integration guide](docs/integration-guide.md) has copy-paste examples in Py
 | Live reading | Large weight readout with float32 noise removed (`64.9000015258789` shows as `64.9`); unit, tare and platform; STABLE/UNSTABLE; NET/GROSS badge |
 | Connection | This PC's LAN IP(s) and port, the push URL with a copy button, last update, pushes per second, sender IP, User-Agent, and a STALE warning after 3 s without data |
 | Push log | The last 50 raw push bodies, with malformed ones highlighted; pause and clear |
+| Live read | **Start streaming** polls `GET /api/1.0/weight` at the scale's IP (1–10 times a second). The scale does not have to push |
 | Scale control | ZERO, TARE, CLEAR TARE, UNIT, NET/GROSS, plus direct "set unit" (lb/kg/g/oz) and "set mode" (NET/GROSS), each with its result and a command log |
 | Robust input | Accepts `POST /weight` or `POST /`; key names in any case; chunked or form-encoded bodies. Bad JSON is logged but never crashes the server, and the scale always gets HTTP 200 |
 | Testing | `simulate.py` (fake pushes, plus an optional mock UpScale API) and the `--demo` flag |
